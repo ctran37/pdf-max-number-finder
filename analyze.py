@@ -1,5 +1,7 @@
 import argparse
 import io
+import sys
+import urllib.error
 import urllib.request
 import pdfplumber
 
@@ -19,9 +21,20 @@ def find_max_in_pdf(path: str) -> dict:
     best_raw = best_scaled = None
     global_scale = None
 
-    with pdfplumber.open(resolve_source(path)) as pdf:
+    try:
+        pdf = pdfplumber.open(resolve_source(path))
+    except FileNotFoundError:
+        sys.exit(f"Error: file not found: {path}")
+    except Exception as e:
+        sys.exit(f"Error: could not open PDF ({type(e).__name__}): {e}")
+
+    with pdf:
         for page_num, page in enumerate(pdf.pages):
-            raw_hit, scaled_hit, page_scale = process_page(page, page_num + 1, global_scale)
+            try:
+                raw_hit, scaled_hit, page_scale = process_page(page, page_num + 1, global_scale)
+            except Exception as e:
+                print(f"Warning: skipping page {page_num + 1} ({type(e).__name__}): {e}", file=sys.stderr)
+                continue
             best_raw = better_raw(best_raw, raw_hit)
             best_scaled = better_scaled(best_scaled, scaled_hit)
             if page_scale and global_scale is None:
@@ -38,8 +51,13 @@ def find_max_in_pdf(path: str) -> dict:
 
 def resolve_source(source: str) -> str | io.BytesIO:
     if source.startswith("http://") or source.startswith("https://"):
-        with urllib.request.urlopen(source) as response:
-            return io.BytesIO(response.read())
+        try:
+            with urllib.request.urlopen(source) as response:
+                return io.BytesIO(response.read())
+        except urllib.error.HTTPError as e:
+            sys.exit(f"Error: failed to fetch URL ({e.code} {e.reason}): {source}")
+        except urllib.error.URLError as e:
+            sys.exit(f"Error: could not reach URL ({e.reason}): {source}")
     return source
 
 
@@ -71,6 +89,11 @@ def print_results(best_raw: Hit | None, best_scaled: Hit | None) -> None:
     print(f"\n{'='*60}")
     print("FINAL RESULTS")
     print(f"{'='*60}")
+
+    if not best_raw and not best_scaled:
+        print("No numerical values found in document.")
+        print(f"\n{'='*60}\n")
+        return
 
     if best_raw:
         print(f"max_numerical_raw     : {best_raw.raw:,.2f}")

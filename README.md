@@ -12,6 +12,8 @@ For example, if the document states that values are in millions, a raw value of 
 
 ## Setup
 
+Requires Python 3 to be installed.
+
 ```bash
 pip install -r requirements.txt
 ```
